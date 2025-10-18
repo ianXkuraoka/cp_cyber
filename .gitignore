@@ -7,7 +7,6 @@ env/
 venv/
 *.log
 *.pid
-zap-reports/
 zap-report.html
 zap-report.json
 zap-report.md

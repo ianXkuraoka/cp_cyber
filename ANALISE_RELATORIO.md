@@ -48,7 +48,7 @@ Relatorio em Markdown para documentacao.
 
 Execute o script de analise:
 ```bash
-python analyze_zap.py zap-reports/zap-report.json
+python analyze_zap.py zap-report.json
 ```
 
 Saida esperada:

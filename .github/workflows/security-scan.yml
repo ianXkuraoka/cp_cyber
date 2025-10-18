@@ -36,13 +36,10 @@ jobs:
         curl -f http://localhost:8080 || (cat app.log && exit 1)
         echo "Application is running successfully"
     
-    - name: Create reports directory
-      run: mkdir -p zap-reports
-    
     - name: Run OWASP ZAP Baseline Scan
       run: |
         docker run --network="host" \
-          -v $(pwd)/zap-reports:/zap/wrk/:rw \
+          -v $(pwd):/zap/wrk/:rw \
           -t ghcr.io/zaproxy/zaproxy:stable \
           zap-baseline.py -t http://localhost:8080 \
           -r zap-report.html \
@@ -50,10 +47,14 @@ jobs:
           -w zap-report.md \
           -I || true
     
+    - name: List generated files
+      run: |
+        echo "Arquivos gerados:"
+        ls -la *.html *.json *.md 2>/dev/null || echo "Nenhum relatorio encontrado"
+    
     - name: Parse ZAP JSON Report
       id: parse_report
       run: |
-        cd zap-reports
         if [ -f zap-report.json ]; then
           echo "Relatorio ZAP gerado com sucesso"
           
@@ -86,12 +87,11 @@ jobs:
     - name: Detailed Analysis
       if: always()
       run: |
-        python analyze_zap.py zap-reports/zap-report.json || true
+        python analyze_zap.py zap-report.json || true
     
     - name: Check for critical vulnerabilities
       if: always()
       run: |
-        cd zap-reports
         HIGH=${{ steps.parse_report.outputs.high }}
         CRITICAL=${{ steps.parse_report.outputs.critical }}
         
@@ -117,5 +117,8 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: zap-security-report
-        path: zap-reports/
+        path: |
+          zap-report.html
+          zap-report.json
+          zap-report.md
         retention-days: 30

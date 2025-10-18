@@ -23,21 +23,19 @@ python app.py
 # acessa http://localhost:8080
 ```
 
-3) (Opcional) Rode o ZAP via Docker e gere relatorios em `./zap-reports`:
+3) (Opcional) Rode o ZAP via Docker e gere relatorios:
 ```bash
-mkdir zap-reports
-
-docker run --rm -v "%cd%\zap-reports":/zap/wrk/:rw ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t http://host.docker.internal:8080 -r zap-report.html -J zap-report.json
+docker run --rm -v "%cd%":/zap/wrk/:rw ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t http://host.docker.internal:8080 -r zap-report.html -J zap-report.json -w zap-report.md -I
 ```
 
 ## Como o CI funciona
 O workflow `security-scan.yml`:
 - Sobe a app em `localhost:8080` com validacao de status
-- Executa ZAP (Docker) gerando relatorios HTML, JSON e Markdown
+- Executa ZAP (Docker) gerando relatorios HTML, JSON e Markdown no diretorio raiz
 - Analisa o relatorio com script Python customizado
 - Exibe estatisticas detalhadas (total, severidades, top vulnerabilidades)
 - **Falha** o pipeline se detectar High ou Critical
-- Publica todos os relatorios como artefato `zap-security-report`
+- Publica relatorios como artefato `zap-security-report`
 - Para a aplicacao gracefully ao final
 
 ## Configuracao GitHub
