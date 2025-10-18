@@ -5,6 +5,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   zap-scan:
@@ -12,48 +13,109 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     
     - name: Setup Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: '3.11'
     
     - name: Install dependencies
       run: |
+        pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: Start application
+    - name: Start application in background
       run: |
-        python app.py &
-        sleep 10
+        nohup python app.py > app.log 2>&1 &
+        echo $! > app.pid
+        sleep 5
+    
+    - name: Verify application is running
+      run: |
+        curl -f http://localhost:8080 || (cat app.log && exit 1)
+        echo "Application is running successfully"
+    
+    - name: Create reports directory
+      run: mkdir -p zap-reports
     
     - name: Run OWASP ZAP Baseline Scan
       run: |
-        docker run --network="host" -v $(pwd):/zap/wrk/:rw \
+        docker run --network="host" \
+          -v $(pwd)/zap-reports:/zap/wrk/:rw \
           -t ghcr.io/zaproxy/zaproxy:stable \
           zap-baseline.py -t http://localhost:8080 \
-          -r zap-report.html -J zap-report.json || true
+          -r zap-report.html \
+          -J zap-report.json \
+          -w zap-report.md \
+          -I || true
     
-    - name: Check for critical vulnerabilities
+    - name: Parse ZAP JSON Report
+      id: parse_report
       run: |
+        cd zap-reports
         if [ -f zap-report.json ]; then
+          echo "Relatorio ZAP gerado com sucesso"
+          
+          TOTAL=$(jq '[.site[].alerts[]] | length' zap-report.json)
+          INFO=$(jq '[.site[].alerts[] | select(.riskcode == "0")] | length' zap-report.json)
+          LOW=$(jq '[.site[].alerts[] | select(.riskcode == "1")] | length' zap-report.json)
+          MEDIUM=$(jq '[.site[].alerts[] | select(.riskcode == "2")] | length' zap-report.json)
           HIGH=$(jq '[.site[].alerts[] | select(.riskcode == "3")] | length' zap-report.json)
           CRITICAL=$(jq '[.site[].alerts[] | select(.riskcode == "4")] | length' zap-report.json)
-          echo "High severity alerts: $HIGH"
-          echo "Critical severity alerts: $CRITICAL"
           
-          if [ "$HIGH" -gt 0 ] || [ "$CRITICAL" -gt 0 ]; then
-            echo "FALHA: Vulnerabilidades criticas ou altas detectadas"
-            exit 1
-          fi
+          echo "========================================="
+          echo "RESUMO DO SCAN DE SEGURANCA"
+          echo "========================================="
+          echo "Total de alertas: $TOTAL"
+          echo "Informational: $INFO"
+          echo "Low: $LOW"
+          echo "Medium: $MEDIUM"
+          echo "High: $HIGH"
+          echo "Critical: $CRITICAL"
+          echo "========================================="
+          
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          echo "high=$HIGH" >> $GITHUB_OUTPUT
+          echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+        else
+          echo "ERRO: Relatorio ZAP nao foi gerado"
+          exit 1
+        fi
+    
+    - name: Detailed Analysis
+      if: always()
+      run: |
+        python analyze_zap.py zap-reports/zap-report.json || true
+    
+    - name: Check for critical vulnerabilities
+      if: always()
+      run: |
+        cd zap-reports
+        HIGH=${{ steps.parse_report.outputs.high }}
+        CRITICAL=${{ steps.parse_report.outputs.critical }}
+        
+        if [ "$HIGH" -gt 0 ] || [ "$CRITICAL" -gt 0 ]; then
+          echo "========================================="
+          echo "FALHA: Vulnerabilidades criticas detectadas!"
+          echo "High: $HIGH | Critical: $CRITICAL"
+          echo "========================================="
+          exit 1
+        else
+          echo "Nenhuma vulnerabilidade critica encontrada"
+        fi
+    
+    - name: Stop application
+      if: always()
+      run: |
+        if [ -f app.pid ]; then
+          kill $(cat app.pid) || true
         fi
     
     - name: Upload ZAP Report
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: zap-security-report
-        path: |
-          zap-report.html
-          zap-report.json
+        path: zap-reports/
+        retention-days: 30

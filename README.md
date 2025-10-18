@@ -32,11 +32,13 @@ docker run --rm -v "%cd%\zap-reports":/zap/wrk/:rw ghcr.io/zaproxy/zaproxy:stabl
 
 ## Como o CI funciona
 O workflow `security-scan.yml`:
-- Sobe a app em `localhost:8080`
-- Executa ZAP (Docker) gerando `zap-report.html` e `zap-report.json`
-- Verifica vulnerabilidades High/Critical no JSON
-- **Falha** o pipeline se detectar severidades criticas
-- Publica tudo como artefato `zap-security-report`
+- Sobe a app em `localhost:8080` com validacao de status
+- Executa ZAP (Docker) gerando relatorios HTML, JSON e Markdown
+- Analisa o relatorio com script Python customizado
+- Exibe estatisticas detalhadas (total, severidades, top vulnerabilidades)
+- **Falha** o pipeline se detectar High ou Critical
+- Publica todos os relatorios como artefato `zap-security-report`
+- Para a aplicacao gracefully ao final
 
 ## Configuracao GitHub
 
@@ -90,6 +92,7 @@ cp_cyber/
 │   └── workflows/
 │       └── security-scan.yml
 ├── app.py
+├── analyze_zap.py
 ├── requirements.txt
 └── README.md
 ```
@@ -100,8 +103,17 @@ Pipeline falha se detectar:
 - riskcode == 4 (Critical)
 
 ## Artefatos Gerados
-- zap-report.html (relatorio visual)
-- zap-report.json (dados estruturados)
+- zap-report.html (relatorio visual completo)
+- zap-report.json (dados estruturados para parsing)
+- zap-report.md (relatorio em Markdown)
+- Artefato mantido por 30 dias no GitHub Actions
+
+## Analise Automatica
+Script `analyze_zap.py` fornece:
+- Total de alertas encontrados
+- Distribuicao por severidade
+- Top 10 tipos de vulnerabilidades mais comuns
+- Saida formatada para logs do GitHub Actions
 
 ## Observacoes
 - Este projeto e **didatico**.
