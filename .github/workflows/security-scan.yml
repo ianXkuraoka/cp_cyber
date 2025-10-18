@@ -1,0 +1,59 @@
+name: Security Scan with OWASP ZAP
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  zap-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+    
+    - name: Start application
+      run: |
+        python app.py &
+        sleep 10
+    
+    - name: Run OWASP ZAP Baseline Scan
+      run: |
+        docker run --network="host" -v $(pwd):/zap/wrk/:rw \
+          -t ghcr.io/zaproxy/zaproxy:stable \
+          zap-baseline.py -t http://localhost:8080 \
+          -r zap-report.html -J zap-report.json || true
+    
+    - name: Check for critical vulnerabilities
+      run: |
+        if [ -f zap-report.json ]; then
+          HIGH=$(jq '[.site[].alerts[] | select(.riskcode == "3")] | length' zap-report.json)
+          CRITICAL=$(jq '[.site[].alerts[] | select(.riskcode == "4")] | length' zap-report.json)
+          echo "High severity alerts: $HIGH"
+          echo "Critical severity alerts: $CRITICAL"
+          
+          if [ "$HIGH" -gt 0 ] || [ "$CRITICAL" -gt 0 ]; then
+            echo "FALHA: Vulnerabilidades criticas ou altas detectadas"
+            exit 1
+          fi
+        fi
+    
+    - name: Upload ZAP Report
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: zap-security-report
+        path: |
+          zap-report.html
+          zap-report.json
